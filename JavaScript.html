@@ -1,0 +1,474 @@
+<script>
+  let allData = [];
+  let allSavedData = {};
+  let currentModalData = null;
+
+  document.addEventListener("DOMContentLoaded", () => {
+    console.log("DOM Loaded. Starting data load...");
+    loadSheetData();
+    document.getElementById("provinceFilter").addEventListener("change", filterTable);
+    document.getElementById("searchBox").addEventListener("input", filterTable);
+    document.getElementById("modal-close-btn").addEventListener("click", closeModal);
+    document.getElementById("btnBack").addEventListener("click", closeModal);
+    document.getElementById("survey-form").addEventListener("submit", handleFormSubmit);
+
+    const fileInputs = document.querySelectorAll('.file-input-hidden');
+    fileInputs.forEach(input => {
+      input.addEventListener('change', updateFileDisplay);
+    });
+  });
+
+  function loadSheetData() {
+    showLoader('กำลังโหลดข้อมูลวงจร...');
+    console.log("loadSheetData: Calling server...");
+
+    const p1 = new Promise((resolve, reject) => {
+      google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getSheetData();
+    });
+    const p2 = new Promise((resolve, reject) => {
+      google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getAllSavedData();
+    });
+
+    Promise.all([p1, p2])
+      .then(onDataLoaded)
+      .catch(showError)
+      .finally(hideLoader);
+  }
+
+  function onDataLoaded(data) {
+    console.log("onDataLoaded: Received data from server", data);
+    const mainData = data[0];
+    const savedDataMap = data[1];
+
+    if (mainData.error) { showError(mainData); return; }
+    if (savedDataMap.error) { showError(savedDataMap); return; }
+
+    allData = mainData || [];
+    allSavedData = savedDataMap || {};
+    console.log("onDataLoaded: allData set:", allData.length, "rows");
+    console.log("onDataLoaded: allSavedData set:", Object.keys(allSavedData).length, "records");
+
+    populateProvinceFilter(allData);
+    renderTable(allData, allSavedData);
+  }
+
+  function populateProvinceFilter(data) {
+    const provinceFilter = document.getElementById("provinceFilter");
+    provinceFilter.innerHTML = '<option value="">-- แสดงทุกจังหวัด --</option>';
+    if (!data || data.length === 0) return;
+
+    const provinces = [...new Set(data.map(row => row[6]))].sort();
+
+    provinces.forEach(p => {
+      if (p) {
+        const option = document.createElement("option");
+        option.value = p;
+        option.textContent = p;
+        provinceFilter.appendChild(option);
+      }
+    });
+  }
+
+  function filterTable() {
+    const province = document.getElementById("provinceFilter").value;
+    const search = document.getElementById("searchBox").value.toLowerCase().trim();
+
+    const filteredData = (allData || []).filter(row => {
+      if (!row || row.length < 7) return false;
+      const matchProvince = !province || (row[6] === province);
+      const matchSearch = !search ||
+        (row[1] && row[1].toLowerCase().includes(search)) ||
+        (row[2] && row[2].toLowerCase().includes(search)) ||
+        (row[3] && row[3].toLowerCase().includes(search)) ||
+        (row[4] && row[4].toLowerCase().includes(search)) ||
+        (row[5] && row[5].toLowerCase().includes(search)) ||
+        (row[6] && row[6].toLowerCase().includes(search));
+      return matchProvince && matchSearch;
+    });
+    console.log("filterTable: Filtering complete, rendering", filteredData.length, "rows");
+    renderTable(filteredData, allSavedData);
+  }
+
+  function renderTable(data, savedMap) {
+    const tableBody = document.getElementById("data-table").getElementsByTagName('tbody')[0];
+    tableBody.innerHTML = "";
+    document.getElementById("row-counter").textContent = `พบข้อมูล ${data.length} รายการ`;
+
+    if (data.length === 0) {
+      tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">ไม่พบข้อมูล</td></tr>';
+      return;
+    }
+
+    data.forEach(row => {
+      if (!row || row.length < 7) return;
+      const tr = tableBody.insertRow();
+
+      tr.insertCell(0).textContent = row[0] || ''; // A
+      tr.insertCell(1).textContent = row[1] || ''; // C
+      tr.insertCell(2).textContent = row[2] || ''; // D
+      tr.insertCell(3).textContent = row[3] || ''; // K
+      tr.insertCell(4).textContent = row[4] || ''; // L
+      tr.insertCell(5).textContent = row[5] || ''; // M
+      tr.insertCell(6).textContent = row[6] || ''; // N
+
+      const actionCell = tr.insertCell(7);
+      const reqId = row[1];
+      let iconHtml = '';
+
+      if (reqId && savedMap && savedMap.hasOwnProperty(reqId)) {
+        iconHtml += '<i class="fas fa-file-alt saved-icon" title="บันทึกข้อมูลแล้ว"></i> ';
+      }
+
+      iconHtml += '<i class="fas fa-pencil-alt edit-icon" title="แก้ไข/ดูข้อมูล"></i>';
+      actionCell.innerHTML = iconHtml;
+
+      tr.addEventListener('click', () => openModal(row));
+    });
+    console.log("renderTable: Table rendered.");
+  }
+
+  function openModal(rowData) {
+    console.log("openModal: Starting for rowData:", rowData);
+    if (!rowData || rowData.length < 7) {
+        showError({ message: "ข้อมูลแถวไม่ถูกต้อง ไม่สามารถเปิด Modal ได้" });
+        return;
+    }
+    currentModalData = rowData;
+
+    const reqId = rowData[1];
+    const circuitId = rowData[2];
+    const village = rowData[3] || '-';
+    const tambon = rowData[4] || '-';
+    const amphoe = rowData[5] || '-';
+    const province = rowData[6] || '-';
+
+    document.getElementById("modal-reqId").textContent = reqId || 'N/A';
+    document.getElementById("modal-circuitId").textContent = circuitId || 'N/A';
+    document.getElementById("modal-location").textContent = `หมู่บ้าน ${village} ต.${tambon} อ.${amphoe} จ.${province}`;
+
+    document.getElementById("modal-hidden-reqId").value = reqId || '';
+    document.getElementById("modal-hidden-tambon").value = tambon || '';
+    document.getElementById("modal-hidden-province").value = province || '';
+
+    const savedRecord = reqId && allSavedData ? allSavedData[reqId] : null;
+    console.log("openModal: Found savedRecord for reqId", reqId, ":", savedRecord);
+
+    if (savedRecord) {
+      document.getElementById("snCPE").value = savedRecord.snCPE || "";
+      document.getElementById("snLNB").value = savedRecord.snLNB || "";
+      document.getElementById("notes").value = savedRecord.notes || "";
+      document.getElementById("recorderName").value = savedRecord.recorderName || "";
+      document.getElementById("recorderId").value = savedRecord.recorderId || "";
+      document.getElementById("modal-hidden-rowNum").value = savedRecord.rowNum || "";
+
+      console.log("openModal: Populating previews...");
+      setPreview('fileCPE', savedRecord.imgCPE);
+      setPreview('fileLNB', savedRecord.imgLNB);
+      setPreview('filePole', savedRecord.imgPole);
+      setPreview('fileFeed', savedRecord.imgFeed);
+      setPreview('fileBase', savedRecord.imgBase);
+      setPreview('fileSolar', savedRecord.imgSolar);
+
+    } else {
+      console.log("openModal: No saved record found, resetting fields.");
+      resetFormFields();
+    }
+
+    document.getElementById("modalBackdrop").style.visibility = "visible";
+    document.getElementById("modalBackdrop").style.opacity = 1;
+    console.log("openModal: Modal should be visible now.");
+  }
+
+  /**
+   * (--- V5.4 ---)
+   * ฟังก์ชันช่วยแสดงรูปตัวอย่างและเก็บลิงก์เก่า (เช็ค URL เข้มงวดขึ้น)
+   */
+  function setPreview(inputId, url) {
+    const previewImg = document.getElementById(inputId + '-preview');
+    const nameDisplay = document.getElementById(inputId + '-name');
+
+    console.log(`setPreview: Called for inputId: ${inputId}, URL: ${url}`);
+    console.log(`setPreview: Trying to find previewImg with ID: ${inputId + '-preview'}. Found:`, previewImg);
+    console.log(`setPreview: Trying to find nameDisplay with ID: ${inputId + '-name'}. Found:`, nameDisplay);
+
+    if (!previewImg || !nameDisplay) {
+        console.error(`setPreview: ERROR - Could not find elements for inputId: ${inputId}`);
+        return;
+    }
+
+    // (V5.4) ตรวจสอบ URL ให้เข้มงวดขึ้น
+    // ต้องเป็น string, ขึ้นต้นด้วย https://drive.google.com/uc?id=
+    const isValidUrl = typeof url === 'string' && url.startsWith('https://drive.google.com/uc?id=');
+
+    if (isValidUrl) {
+      previewImg.src = url;
+      previewImg.style.display = 'block';
+      previewImg.dataset.oldLink = url;
+      nameDisplay.textContent = 'มีรูปภาพเดิม (เลือกไฟล์ใหม่เพื่อทับ)';
+    } else {
+      // ถ้า url เป็น null, empty, หรือไม่ใช่ URL ที่ถูกต้อง
+      previewImg.src = ''; // เคลียร์ src เก่า (กันแสดงรูปเสียค้าง)
+      previewImg.style.display = 'none';
+      previewImg.dataset.oldLink = '';
+      nameDisplay.textContent = 'ยังไม่ได้เลือกไฟล์';
+      if (url && !isValidUrl) { // ถ้า url ไม่ใช่ null แต่แสดงไม่ได้ ให้ Log ไว้
+          console.warn(`setPreview: Invalid or non-Google Drive UC URL received for ${inputId}: "${url}"`);
+      }
+    }
+  }
+
+
+  function closeModal() {
+    console.log("closeModal: Closing and resetting modal.");
+    document.getElementById("modalBackdrop").style.visibility = "hidden";
+    document.getElementById("modalBackdrop").style.opacity = 0;
+    resetFormFields();
+  }
+
+  function resetFormFields() {
+    document.getElementById("survey-form").reset();
+    document.getElementById("modal-hidden-rowNum").value = "";
+
+    setPreview('fileCPE', null);
+    setPreview('fileLNB', null);
+    setPreview('filePole', null);
+    setPreview('fileFeed', null);
+    setPreview('fileBase', null);
+    setPreview('fileSolar', null);
+  }
+
+  function updateFileDisplay(event) {
+    const input = event.target;
+    const file = input.files[0];
+    const displaySpan = document.getElementById(input.id + '-name');
+    const previewImg = document.getElementById(input.id + '-preview');
+
+    console.log(`updateFileDisplay: File selected for ${input.id}`);
+    console.log(`updateFileDisplay: Preview Img element:`, previewImg);
+    console.log(`updateFileDisplay: Display Span element:`, displaySpan);
+
+    if (!previewImg || !displaySpan) {
+        console.error(`updateFileDisplay: ERROR - Could not find elements for inputId: ${input.id}`);
+        return;
+    }
+
+    if (file) {
+      if (file.size > 3 * 1024 * 1024) {
+        alert("ข้อผิดพลาด: ขนาดไฟล์ต้องไม่เกิน 3MB");
+        input.value = "";
+        displaySpan.textContent = "ไฟล์ใหญ่เกินไป (สูงสุด 3MB)";
+        const oldLink = previewImg.dataset.oldLink;
+        if (oldLink && oldLink.startsWith('https://drive.google.com/uc?id=')) {
+            previewImg.src = oldLink;
+            previewImg.style.display = 'block';
+        } else {
+            previewImg.style.display = 'none';
+        }
+        return;
+      }
+
+      displaySpan.textContent = file.name;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImg.src = e.target.result;
+        previewImg.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+
+    } else {
+      const oldLink = previewImg.dataset.oldLink;
+      if (oldLink && oldLink.startsWith('https://drive.google.com/uc?id=')) {
+          previewImg.src = oldLink;
+          displaySpan.textContent = "มีรูปภาพเดิม (เลือกไฟล์ใหม่เพื่อทับ)";
+          previewImg.style.display = 'block';
+      } else {
+          displaySpan.textContent = 'ยังไม่ได้เลือกไฟล์';
+          previewImg.style.display = 'none';
+          previewImg.src = '';
+      }
+    }
+  }
+
+  async function handleFormSubmit(event) {
+    event.preventDefault();
+    console.log("handleFormSubmit: Starting submission...");
+    showLoader("กำลังบันทึกข้อมูลและอัปโหลดไฟล์...");
+
+    try {
+      const snCPE = document.getElementById('snCPE').value;
+      const snLNB = document.getElementById('snLNB').value;
+      const recorderName = document.getElementById('recorderName').value;
+      const recorderId = document.getElementById('recorderId').value;
+
+      let errors = [];
+      if (!snCPE) errors.push("Serial Number ของ CPE");
+      if (!snLNB) errors.push("Serial Number ของ LNB/BUC");
+      if (!recorderName) errors.push("ชื่อผู้บันทึก");
+      if (!recorderId) errors.push("รหัสผู้บันทึก");
+
+      const fileInputs = [
+        { key: 'fileCPE',   name: 'รูปภาพ CPE' },
+        { key: 'fileLNB',   name: 'รูปภาพ LNB/BUC' },
+        { key: 'filePole',  name: 'รูปภาพ ขาจาน' },
+        { key: 'fileFeed',  name: 'รูปภาพ สาย Feed' },
+        { key: 'fileBase',  name: 'รูปภาพ ฐานตั้งจาน' },
+        { key: 'fileSolar', name: 'รูปภาพ Solar Cell' }
+      ];
+
+      let formData = {
+        recorderName: recorderName,
+        recorderId: recorderId,
+        snCPE: snCPE,
+        snLNB: snLNB,
+        notes: document.getElementById('notes').value.trim(),
+        reqId: document.getElementById('modal-hidden-reqId').value,
+        tambon: document.getElementById('modal-hidden-tambon').value,
+        province: document.getElementById('modal-hidden-province').value,
+        existingRowNum: document.getElementById('modal-hidden-rowNum').value
+      };
+
+      const filePromises = [];
+
+      fileInputs.forEach(input => {
+        const fileElement = document.getElementById(input.key);
+        const previewElement = document.getElementById(input.key + '-preview');
+
+        console.log(`handleFormSubmit: Checking file input for ${input.key}. Element:`, fileElement);
+        console.log(`handleFormSubmit: Checking preview img for ${input.key}. Element:`, previewElement);
+
+        if (!fileElement || !previewElement) {
+             console.error(`handleFormSubmit: ERROR - Missing HTML elements for ${input.key}`);
+             errors.push(`เกิดข้อผิดพลาดภายใน (${input.key})`);
+             return;
+        }
+
+        const file = fileElement.files[0];
+        const oldLink = previewElement.dataset.oldLink;
+
+        const isValidOldLink = typeof oldLink === 'string' && oldLink.startsWith('https://drive.google.com/uc?id=');
+        if (!file && !isValidOldLink) {
+          errors.push(input.name);
+        }
+
+        formData[input.key] = null;
+        formData['oldLink' + input.key.replace('file', '')] = oldLink || "";
+
+        if (file) {
+          filePromises.push(
+            readFileAsBase64(file).then(fileInfo => {
+              if (fileInfo) {
+                 formData[input.key] = fileInfo;
+              } else {
+                 console.warn(`handleFormSubmit: readFileAsBase64 failed for ${input.key}`);
+              }
+            }).catch(readError => {
+                 console.error(`handleFormSubmit: Error reading file ${input.key}:`, readError);
+                 errors.push(`เกิดข้อผิดพลาดในการอ่านไฟล์ ${input.name}`);
+            })
+          );
+        }
+      });
+
+      await Promise.allSettled(filePromises);
+
+      if (errors.length > 0) {
+        throw new Error("กรุณากรอกข้อมูลให้ครบถ้วน หรือ แก้ไขข้อผิดพลาด:\n- " + errors.join("\n- "));
+      }
+
+      console.log("handleFormSubmit: Validation passed. File reads complete. Sending data to server:", formData);
+
+      google.script.run
+        .withSuccessHandler(onSaveSuccess)
+        .withFailureHandler(showError)
+        .saveData(formData);
+
+    } catch (error) {
+       console.error("handleFormSubmit: Error during submission:", error);
+      showError(error);
+    }
+  }
+
+ /**
+   * (--- V5.3 ---)
+   */
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) {
+        resolve(null);
+        return;
+      }
+      if (!(file instanceof File)) {
+          console.error("readFileAsBase64: Input is not a File object:", file);
+          resolve(null);
+          return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => resolve({
+          data: reader.result,
+          mimeType: file.type || 'application/octet-stream',
+          name: file.name
+      });
+      reader.onerror = (error) => {
+          console.error("readFileAsBase64: FileReader error:", error);
+          reject(error);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+
+  /**
+   * (--- V5.3 ---)
+   */
+  function onSaveSuccess(response) {
+    console.log("onSaveSuccess: Received response:", response);
+    hideLoader();
+    if (response.success) {
+      alert(response.message);
+
+      if (response.savedDataMap) {
+          Object.assign(allSavedData, response.savedDataMap);
+          console.log("onSaveSuccess: Updated allSavedData:", allSavedData);
+      }
+
+      filterTable();
+      closeModal();
+
+    } else {
+      showError(response);
+    }
+  }
+
+  // --- Utility Functions (V.2 -> V5.1) ---
+  function showLoader(message) {
+    const loaderBackdrop = document.getElementById("loader-backdrop");
+    const loaderText = document.getElementById("loader-text");
+
+    if (!loaderBackdrop || !loaderText) {
+        console.error("showLoader: Could not find loader elements!");
+        return;
+    }
+
+    loaderText.textContent = message || "กำลังโหลด...";
+    loaderBackdrop.style.visibility = "visible";
+    loaderBackdrop.style.opacity = 1;
+  }
+  function hideLoader() {
+     const loaderBackdrop = document.getElementById("loader-backdrop");
+     if (loaderBackdrop) {
+        loaderBackdrop.style.visibility = "hidden";
+        loaderBackdrop.style.opacity = 0;
+     } else {
+        console.warn("hideLoader: Could not find loader backdrop.");
+     }
+  }
+  function showError(error) {
+    console.error("showError: Displaying error:", error);
+    hideLoader();
+    const errorMessage = error && error.message ? error.message : (typeof error === 'string' ? error : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ");
+    alert("เกิดข้อผิดพลาด:\n" + errorMessage);
+  }
+
+</script>
