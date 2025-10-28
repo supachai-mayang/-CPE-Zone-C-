@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>แบบฟอร์มสำรวจฯ</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <?!= include("CSS"); ?>
+</head>
+<body>
+
+  <!-- Spinner Loader (V2) -->
+  <div id="loader-backdrop" class="loader-backdrop"> 
+    <div class="loader-spinner"></div>
+    <div id="loader-text">กำลังโหลด...</div>
+  </div>
+
+  <!-- Main Container -->
+  <div class="container">
+    <header>
+      <h1>แบบฟอร์มสำรวจการรื้อถอนและส่งมอบจานดาวเทียมและอุปกรณ์ CPE เนตชายขอบ Zone C+</h1>
+      <h2>( จำนวน 841 วงจร พื้นที่ 7 จังหวัด )</h2>
+    </header>
+    
+    <main>
+      <!-- Filter Section (V2) -->
+      <section class="filter-section">
+        <div class="filter-group">
+          <label for="provinceFilter">กรองจากจังหวัด:</label>
+          <select id="provinceFilter">
+            <option value="">-- แสดงทุกจังหวัด --</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="searchBox">ค้นหา: (รหัสใบคำขอ, หมายเลขวงจร, ที่อยู่)</label>
+          <input type="text" id="searchBox" placeholder="พิมพ์เพื่อค้นหา...">
+        </div>
+      </section>
+      
+      <!-- Table Section (V2) -->
+      <section class="table-wrapper">
+        <table id="data-table">
+          <thead>
+            <tr>
+              <th>ลำดับ</th>
+              <th>รหัสใบคำขอ</th>
+              <th>หมายเลขวงจร</th>
+              <th>หมู่บ้าน</th>
+              <th>ตำบล</th>
+              <th>อำเภอ/เขต</th>
+              <th>จังหวัด</th>
+              <th>สำรวจ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Data rows will be injected here by JavaScript -->
+          </tbody>
+        </table>
+      </section>
+      <div id="row-counter">กำลังโหลดข้อมูล...</div>
+    </main>
+  </div>
+
+  <!-- Modal Section (V2 / V5.0 structure) -->
+  <div id="modalBackdrop" class="modal-backdrop" style="visibility: hidden; opacity: 0;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>ตรวจสอบข้อมูลและอัพโหลดรูปภาพการรื้อถอน</h2>
+        <button id="modal-close-btn" class="modal-close-btn">&times;</button>
+      </div>
+      
+      <form id="survey-form">
+        <!-- Hidden fields -->
+        <input type="hidden" id="modal-hidden-reqId">
+        <input type="hidden" id="modal-hidden-tambon">
+        <input type="hidden" id="modal-hidden-province">
+        <input type="hidden" id="modal-hidden-rowNum"> 
+        
+        <!-- Section 0: Info -->
+        <section class="modal-section info-section">
+          <div class="info-grid">
+            <div><strong>รหัสใบคำขอ:</strong> <span id="modal-reqId"></span></div>
+            <div><strong>หมายเลขวงจร:</strong> <span id="modal-circuitId"></span></div>
+          </div>
+          <div><strong>สถานที่ติดตั้ง:</strong> <span id="modal-location"></span></div>
+        </section>
+        
+        <!-- Section 1: Return -->
+        <section class="modal-section">
+          <h3>1. รายการอุปกรณ์ดาวเทียมที่ต้องเก็บและส่งคืน</h3>
+          <p class="section-note">(ส่งคืนที่อาคารพัสดุ นป. อ.สารภี จ.เชียงใหม่)</p>
+          
+          <!-- 1.1 CPE -->
+          <div class="form-group upload-group">
+            <label for="snCPE">1.1 อุปกรณ์ CPE (UT) พร้อม Adapter <small>(ระบุ S/N, อัพโหลดรูปภาพ)</small></label>
+            <input type="text" id="snCPE" placeholder="Serial Number (บังคับกรอก)">
+            <label for="fileCPE" class="custom-file-upload-btn"><i class="fas fa-upload"></i> เลือกรูปภาพ CPE</label>
+            <input type="file" id="fileCPE" class="file-input-hidden" accept="image/*">
+            <span id="fileCPE-name" class="file-name-display">ยังไม่ได้เลือกไฟล์</span>
+            <!-- (--- V5.4 UPDATED: Added onerror ---) -->
+            <img id="fileCPE-preview" class="preview-img" alt="CPE Preview" data-old-link="" onerror="this.src='https://placehold.co/100x100/eeeeee/aaaaaa?text=LOAD+ERROR'; this.onerror=null;">
+          </div>
+          
+          <!-- 1.2 LNB -->
+          <div class="form-group upload-group">
+            <label for="snLNB">1.2 จานดาวเทียมพร้อมหัว LNB BUC <small>(ระบุ S/N, อัพโหลดรูปภาพ)</small></label>
+            <input type="text" id="snLNB" placeholder="Serial Number (บังคับกรอก)">
+            <label for="fileLNB" class="custom-file-upload-btn"><i class="fas fa-upload"></i> เลือกรูปภาพ LNB/BUC</label>
+            <input type="file" id="fileLNB" class="file-input-hidden" accept="image/*">
+            <span id="fileLNB-name" class="file-name-display">ยังไม่ได้เลือกไฟล์</span>
+            <!-- (--- V5.4 UPDATED: Added onerror ---) -->
+            <img id="fileLNB-preview" class="preview-img" alt="LNB Preview" data-old-link="" onerror="this.src='https://placehold.co/100x100/eeeeee/aaaaaa?text=LOAD+ERROR'; this.onerror=null;">
+          </div>
+
+          <!-- 1.3 Pole -->
+          <div class="form-group upload-group">
+            <label for="filePole">1.3 ขาจานดาวเทียม <small>(อัพโหลดรูปภาพ)</small></label>
+            <label for="filePole" class="custom-file-upload-btn"><i class="fas fa-upload"></i> เลือกรูปภาพ ขาจาน</label>
+            <input type="file" id="filePole" class="file-input-hidden" accept="image/*">
+            <span id="filePole-name" class="file-name-display">ยังไม่ได้เลือกไฟล์</span>
+            <!-- (--- V5.4 UPDATED: Added onerror ---) -->
+            <img id="filePole-preview" class="preview-img" alt="Pole Preview" data-old-link="" onerror="this.src='https://placehold.co/100x100/eeeeee/aaaaaa?text=LOAD+ERROR'; this.onerror=null;">
+          </div>
+        </section>
+        
+        <!-- Section 2: Keep -->
+        <section class="modal-section">
+          <h3>2. รายการอุปกรณ์ดาวเทียมที่คงไว้ <small>(เป็นทรัพย์สินของ กสทช.)</small></h3>
+          
+          <!-- 2.1 Feed -->
+          <div class="form-group upload-group">
+            <label for="fileFeed">2.1 สาย Feed จาก UT ไปจานดาวเทียม <small>(ม้วนเก็บให้เรียบร้อย, อัพโหลดรูปภาพ)</small></label>
+            <label for="fileFeed" class="custom-file-upload-btn"><i class="fas fa-upload"></i> เลือกรูปภาพ สาย Feed</label>
+            <input type="file" id="fileFeed" class="file-input-hidden" accept="image/*">
+            <span id="fileFeed-name" class="file-name-display">ยังไม่ได้เลือกไฟล์</span>
+            <!-- (--- V5.4 UPDATED: Added onerror ---) -->
+            <img id="fileFeed-preview" class="preview-img" alt="Feed Cable Preview" data-old-link="" onerror="this.src='https://placehold.co/100x100/eeeeee/aaaaaa?text=LOAD+ERROR'; this.onerror=null;">
+          </div>
+
+          <!-- 2.2 Base -->
+          <div class="form-group upload-group">
+            <label for="fileBase">2.2 ฐานตั้งจานดาวเทียม <small>(คงไว้, อัพโหลดรูปภาพ)</small></label>
+            <label for="fileBase" class="custom-file-upload-btn"><i class="fas fa-upload"></i> เลือกรูปภาพ ฐานตั้งจาน</label>
+            <input type="file" id="fileBase" class="file-input-hidden" accept="image/*">
+            <span id="fileBase-name" class="file-name-display">ยังไม่ได้เลือกไฟล์</span>
+            <!-- (--- V5.4 UPDATED: Added onerror ---) -->
+            <img id="fileBase-preview" class="preview-img" alt="Base Preview" data-old-link="" onerror="this.src='https://placehold.co/100x100/eeeeee/aaaaaa?text=LOAD+ERROR'; this.onerror=null;">
+          </div>
+
+          <!-- 2.3 Solar -->
+          <div class="form-group upload-group">
+            <label for="fileSolar">2.3 อุปกรณ์ Solar Cell <small>(คงไว้, อัพโหลดรูปภาพ)</small></label>
+            <label for="fileSolar" class="custom-file-upload-btn"><i class="fas fa-upload"></i> เลือกรูปภาพ Solar Cell</label>
+            <input type="file" id="fileSolar" class="file-input-hidden" accept="image/*">
+            <span id="fileSolar-name" class="file-name-display">ยังไม่ได้เลือกไฟล์</span>
+            <!-- (--- V5.4 UPDATED: Added onerror ---) -->
+            <img id="fileSolar-preview" class="preview-img" alt="Solar Cell Preview" data-old-link="" onerror="this.src='https://placehold.co/100x100/eeeeee/aaaaaa?text=LOAD+ERROR'; this.onerror=null;">
+          </div>
+        </section>
+        
+        <!-- Section 3: Notes -->
+        <section class="modal-section">
+          <h3>3. หมายเหตุ</h3>
+          <div class="form-group">
+            <label for="notes">(ระบุข้อความหรือหมายเหตุ ถ้ามี)</label>
+            <textarea id="notes" rows="3" placeholder="ระบุหมายเหตุ..."></textarea>
+          </div>
+        </section>
+
+        <!-- Footer (V2) -->
+        <footer class="modal-footer">
+          <div class="recorder-info">
+            <div class="form-group">
+              <label for="recorderName">ผู้บันทึกข้อมูล ชื่อ:</label>
+              <input type="text" id="recorderName" placeholder="ชื่อ-นามสกุล (บังคับกรอก)">
+            </div>
+            <div class="form-group">
+              <label for="recorderId">รหัส:</label>
+              <input type="text" id="recorderId" placeholder="รหัสพนักงาน (บังคับกรอก)">
+            </div>
+          </div>
+          <div class="footer-buttons">
+            <button type="button" id="btnBack" class="btn btn-secondary">ย้อนกลับ</button>
+            <button type="submit" id="btnSave" class="btn btn-primary">บันทึกข้อมูล</button>
+          </div>
+        </footer>
+        
+      </form>
+    </div>
+  </div>
+  
+  <?!= include("JavaScript"); ?>
+  
+</body>
+</html>
+
